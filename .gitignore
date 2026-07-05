@@ -1,0 +1,5 @@
+# VM harness state: ISO, disk images, UEFI vars, checksums
+vm/state/
+
+# Machine-specific configs with secrets
+config/*.local.env
