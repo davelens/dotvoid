@@ -1,4 +1,4 @@
-# void
+# dotvoid
 
 Deterministic Void Linux installation and configuration.
 
@@ -82,6 +82,23 @@ Use `./vm/run.sh --fresh` to wipe the disk and start over.
 `post.sh` is re-runnable: it updates the system, installs
 `POST_PACKAGES`, enables nonfree/multilib repos + Steam, and installs
 Discord via Flatpak (per the `ENABLE_*` flags in the config).
+
+## Desktop (sway)
+
+The sway desktop bootstrap lives in the dotsys repo
+(`~/Repositories/davelens/dotsys/void/init.sh`), mirroring its Arch
+setup. Since Void has no systemd, the session stack differs:
+
+| Arch (dotsys/arch) | Void (dotsys/void) |
+|---|---|
+| uwsm session | greetd runs `sway-session` wrapper |
+| logind sessions | turnstile (`turnstiled` + `pam_turnstile`) |
+| logind seats | seatd |
+| systemd user units | turnstile runit services in `~/.config/service/` |
+| `dbus-run-session` | turnstile dbus user service (shared bus) |
+
+After a base install + `post.sh`, clone dotsys and run
+`void/init.sh` as your user.
 
 ## Notes
 
