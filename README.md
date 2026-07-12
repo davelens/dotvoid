@@ -10,9 +10,9 @@ hardware.
 
 Choices baked in:
 
-- **glibc** — Steam and Discord are proprietary glibc binaries; musl
-  would force Flatpak workarounds for both. (`LIBC` is still a config
-  variable if you ever want a musl box.)
+- **glibc** — the personalized dotsys profile installs native Steam and
+  targets x86_64 glibc. (`LIBC` is still a config variable if you want a
+  minimal musl base system without that profile.)
 - **UEFI + GRUB** — with the `--removable` fallback path so it boots
   even on firmware that ignores efivars.
 - **btrfs** — subvolumes `@` (/), `@home`, `@snapshots`, mounted with
@@ -27,7 +27,6 @@ config/
 scripts/
   install.sh       # run from the live ISO: partition, bootstrap, chroot
   configure.sh     # runs inside the chroot (invoked by install.sh)
-  post.sh          # on the booted system: updates, Steam, Discord, extras
 vm/
   fetch-iso.sh     # download + sha256-verify the live ISO
   run.sh           # boot live ISO + fresh disk in QEMU (UEFI, 9p share)
@@ -69,15 +68,18 @@ For manual debugging, boot the live image in a graphical QEMU window:
    sudo ./scripts/install.sh config/my-machine.env
    ```
 
-5. Reboot into the new system, then finish up:
+5. Reboot into the new system.
+6. Clone [dotsys](https://github.com/davelens/dotsys) and run its Void
+   bootstrap as your desktop user:
 
    ```sh
-   sudo ./scripts/post.sh config/my-machine.env
+   git clone https://github.com/davelens/dotsys \
+     ~/Repositories/davelens/dotsys
+   ~/Repositories/davelens/dotsys/void/init.sh
    ```
 
-`post.sh` is re-runnable: it updates the system, installs
-`POST_PACKAGES`, enables nonfree/multilib repos + Steam, and installs
-Discord via Flatpak (per the `ENABLE_*` flags in the config).
+Personalized packages and applications are intentionally provisioned by
+`dotsys`, not by this base-system installer.
 
 ## Desktop (sway)
 
@@ -93,8 +95,7 @@ setup. Since Void has no systemd, the session stack differs:
 | systemd user units | turnstile runit services in `~/.config/service/` |
 | `dbus-run-session` | turnstile dbus user service (shared bus) |
 
-After a base install + `post.sh`, clone dotsys and run
-`void/init.sh` as your user.
+After a base install, clone dotsys and run `void/init.sh` as your user.
 
 ## Notes
 
