@@ -41,25 +41,21 @@ Host requirements: `qemu-system-x86_64`, `edk2-ovmf`, KVM.
 
 ```sh
 ./vm/fetch-iso.sh    # download + verify the live ISO
-./vm/run.sh          # boots the live ISO with the repo shared via 9p
+./vm/install.sh      # fresh disk + fully unattended install
 ```
 
-Inside the VM (login `root` / `voidlinux`):
-
-```sh
-mkdir -p /media/repo
-mount -t 9p -o trans=virtio,version=9p2000.L repo /media/repo
-FORCE=1 /media/repo/scripts/install.sh /media/repo/config/vm.env
-poweroff
-```
-
-Then verify the installed system boots on its own:
+The command logs into the live image, mounts the repository, runs the
+installer, and powers off automatically. Then verify the installed system:
 
 ```sh
 ./vm/test.sh         # also forwards ssh to localhost:2222
 ```
 
-Use `./vm/run.sh --fresh` to wipe the disk and start over.
+For manual debugging, boot the live image in a graphical QEMU window:
+
+```sh
+./vm/run.sh --fresh
+```
 
 ## Installing on real hardware
 

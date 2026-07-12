@@ -16,7 +16,7 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 command -v qemu-system-x86_64 >/dev/null || die "qemu-system-x86_64 not found"
-[ -f "$DISK_PATH" ] || die "no VM disk found; run ./vm/run.sh and install first"
+[ -f "$DISK_PATH" ] || die "no VM disk found; run ./vm/install.sh first"
 setup_uefi
 
 log "Booting installed system from $DISK_PATH (ssh: port 2222)"

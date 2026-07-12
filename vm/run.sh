@@ -3,8 +3,9 @@
 # run.sh — boot the Void live ISO in QEMU (UEFI) with a fresh disk and
 # this repo shared into the guest over virtio-9p.
 #
-#   ./vm/run.sh            # boot live ISO + existing (or new) disk
-#   ./vm/run.sh --fresh    # recreate the disk first
+#   ./vm/install.sh        # recommended: fully unattended fresh install
+#   ./vm/run.sh            # manual debugging: live ISO + existing/new disk
+#   ./vm/run.sh --fresh    # manual debugging with a fresh disk
 #
 # Inside the VM, log in as root (password: voidlinux), then run:
 #

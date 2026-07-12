@@ -19,6 +19,24 @@ TARGET=/mnt
 log() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
+wait_for_network() {
+  local attempt host
+
+  host="${MIRROR#*://}"
+  host="${host%%/*}"
+
+  log "Waiting for DNS and network connectivity"
+  for ((attempt = 1; attempt <= 60; attempt++)); do
+    if getent ahostsv4 "$host" >/dev/null 2>&1; then
+      log "Network is ready"
+      return 0
+    fi
+    sleep 2
+  done
+
+  die "network did not become ready after 120 seconds"
+}
+
 # ── Preflight ────────────────────────────────────────────────────────
 
 CONFIG="${1:-}"
@@ -48,6 +66,11 @@ log "Target disk : $DISK"
 log "libc        : $LIBC ($REPO_URL)"
 log "Hostname    : $HOSTNAME"
 sfdisk -l "$DISK" | sed -n '1,4p' || true
+
+# The live image starts networking asynchronously. In an automated VM the
+# installer can otherwise reach xbps before DHCP and DNS are configured.
+# Do this before confirmation/partitioning so an offline install is harmless.
+wait_for_network
 
 if [ "${FORCE:-0}" != "1" ]; then
   printf '\033[1;31mThis will DESTROY ALL DATA on %s. Type "yes" to continue: \033[0m' "$DISK"
@@ -117,8 +140,17 @@ mount "$ESP_DEV" "$TARGET/boot/efi"
 log "Installing packages into $TARGET (this downloads from $REPO_URL)"
 mkdir -p "$TARGET/var/db/xbps/keys"
 cp /var/db/xbps/keys/* "$TARGET/var/db/xbps/keys/"
-# shellcheck disable=SC2086
-XBPS_ARCH="$ARCH" xbps-install -Sy -R "$REPO_URL" -r "$TARGET" $PACKAGES
+installed=0
+for attempt in 1 2 3 4 5; do
+  # shellcheck disable=SC2086
+  if XBPS_ARCH="$ARCH" xbps-install -Sy -R "$REPO_URL" -r "$TARGET" $PACKAGES; then
+    installed=1
+    break
+  fi
+  log "Package bootstrap failed (attempt $attempt/5); retrying shortly"
+  sleep $((attempt * 5))
+done
+[ "$installed" -eq 1 ] || die "package bootstrap failed after 5 attempts"
 
 # ── fstab ────────────────────────────────────────────────────────────
 
