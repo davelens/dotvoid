@@ -90,10 +90,14 @@ setup. Since Void has no systemd, the session stack differs:
 | Arch (dotsys/arch) | Void (dotsys/void) |
 |---|---|
 | uwsm session | greetd runs `sway-session` wrapper |
-| logind sessions | turnstile (`turnstiled` + `pam_turnstile`) |
-| logind seats | seatd |
+| systemd-logind | elogind (sessions, seats, power, polkit identity) |
 | systemd user units | turnstile runit services in `~/.config/service/` |
 | `dbus-run-session` | turnstile dbus user service (shared bus) |
+
+Turnstile remains the user-service supervisor but is configured with
+`manage_rundir = no`; elogind owns `XDG_RUNTIME_DIR`. Graphical services are
+launched through Sway while turnstile supervises their lifetime, keeping them
+in the active elogind session required for graphical polkit authentication.
 
 After a base install, clone dotsys and run `void/init.sh` as your user.
 
