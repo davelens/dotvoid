@@ -5,10 +5,10 @@
 #
 #   ./vm/test.sh
 #
-# Login: root / voidlinux (from config/vm.env). sshd is enabled in the
+# Login: davelens / voidlinux (from config/vm.env). sshd is enabled in the
 # VM config; port 22 is forwarded to localhost:2222, so you can also:
 #
-#   ssh -p 2222 root@localhost
+#   ssh -p 2222 davelens@localhost
 # ─────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -30,6 +30,6 @@ exec qemu-system-x86_64 \
   -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
   -drive if=pflash,format=raw,file="$OVMF_VARS" \
   -drive file="$DISK_PATH",if=virtio,format=qcow2 \
-  -nic user,model=virtio-net-pci,hostfwd=tcp::2222-:22 \
+  -nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:2222-:22 \
   -display gtk \
   -name void-boot-test

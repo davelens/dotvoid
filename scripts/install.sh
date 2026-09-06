@@ -16,8 +16,25 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET=/mnt
 
+# shellcheck source=scripts/install-safety.sh
+. "$SCRIPT_DIR/install-safety.sh"
+
 log() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+
+TARGET_OWNED=0
+cleanup() {
+  local status=$?
+
+  trap - EXIT
+  if [ "$status" -ne 0 ] && [ "$TARGET_OWNED" -eq 1 ]; then
+    rm -f "$TARGET/root/install.env" "$TARGET/root/install.secrets" \
+          "$TARGET/root/configure.sh" || true
+    umount -R "$TARGET" 2>/dev/null || true
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
 
 wait_for_network() {
   local attempt host
@@ -46,19 +63,47 @@ CONFIG="${1:-}"
 . "$CONFIG"
 
 [ "$(id -u)" -eq 0 ] || die "must run as root"
-[ -n "${DISK:-}" ] || die "DISK is not set in $CONFIG"
-[ -b "$DISK" ] || die "DISK is not a block device: $DISK"
-[ -d /sys/firmware/efi ] || die "not booted in UEFI mode"
-
-for cmd in sfdisk mkfs.vfat mkfs.btrfs xbps-install blkid wipefs; do
-  command -v "$cmd" >/dev/null || die "missing command: $cmd"
+for setting in DISK HOSTNAME USERNAME USER_GROUPS TIMEZONE KEYMAP LIBC MIRROR \
+               ESP_SIZE_MIB BTRFS_OPTS SUBVOLUMES PACKAGES SERVICES; do
+  [ -n "${!setting:-}" ] || die "$setting is not set in $CONFIG"
 done
 
 case "$LIBC" in
-  glibc) REPO_URL="$MIRROR/current" ;;
-  musl)  REPO_URL="$MIRROR/current/musl" ;;
-  *)     die "LIBC must be glibc or musl, got: $LIBC" ;;
+  glibc)
+    [ -n "${LOCALE:-}" ] || die "LOCALE is not set in $CONFIG"
+    REPO_URL="$MIRROR/current"
+    ;;
+  musl) REPO_URL="$MIRROR/current/musl" ;;
+  *)    die "LIBC must be glibc or musl, got: $LIBC" ;;
 esac
+
+first_mount=
+for pair in $SUBVOLUMES; do
+  first_mount="${pair#*=}"
+  break
+done
+[ "$first_mount" = "/" ] || die "first SUBVOLUMES entry must mount at /"
+
+for cmd in sfdisk mkfs.vfat mkfs.btrfs xbps-install blkid wipefs readlink \
+           lsblk findmnt; do
+  command -v "$cmd" >/dev/null || die "missing command: $cmd"
+done
+
+[ -b "$DISK" ] || die "DISK is not a block device: $DISK"
+canonical_disk="$(readlink -f -- "$DISK")" \
+  || die "could not canonicalize DISK: $DISK"
+DISK="$canonical_disk"
+[ -b "$DISK" ] || die "DISK is not a block device: $DISK"
+if ! install_safety_check_target "$DISK" "$TARGET"; then
+  die "$INSTALL_SAFETY_ERROR"
+fi
+[ -d /sys/firmware/efi ] || die "not booted in UEFI mode"
+
+case "$DISK" in
+  *[0-9]) ESP_DEV="${DISK}p1"; ROOT_DEV="${DISK}p2" ;;
+  *)      ESP_DEV="${DISK}1"; ROOT_DEV="${DISK}2" ;;
+esac
+
 ARCH="x86_64"
 [ "$LIBC" = "musl" ] && ARCH="x86_64-musl"
 
@@ -93,7 +138,9 @@ fi
 # ── Partition ────────────────────────────────────────────────────────
 
 log "Wiping and partitioning $DISK"
-umount -R "$TARGET" 2>/dev/null || true
+if ! install_safety_check_target "$DISK" "$TARGET"; then
+  die "$INSTALL_SAFETY_ERROR"
+fi
 wipefs -af "$DISK"
 sfdisk "$DISK" <<EOF
 label: gpt
@@ -102,15 +149,12 @@ type=linux, name=void
 EOF
 # Let the kernel settle and pick up the new partition table.
 command -v partprobe >/dev/null && partprobe "$DISK" || true
-sleep 1
-
-# Handle both /dev/sda1 and /dev/nvme0n1p1 style names.
-part() {
-  if [ -b "${DISK}$1" ]; then echo "${DISK}$1"; else echo "${DISK}p$1"; fi
-}
-ESP_DEV="$(part 1)"
-ROOT_DEV="$(part 2)"
-[ -b "$ESP_DEV" ] && [ -b "$ROOT_DEV" ] || die "partitions did not appear"
+for ((attempt = 1; attempt <= 30; attempt++)); do
+  [ -b "$ESP_DEV" ] && [ -b "$ROOT_DEV" ] && break
+  sleep 1
+done
+[ -b "$ESP_DEV" ] && [ -b "$ROOT_DEV" ] \
+  || die "partitions did not appear after 30 seconds: $ESP_DEV, $ROOT_DEV"
 
 # ── Filesystems + subvolumes ─────────────────────────────────────────
 
@@ -120,10 +164,12 @@ mkfs.btrfs -f -L void "$ROOT_DEV"
 
 log "Creating btrfs subvolumes: $SUBVOLUMES"
 mount "$ROOT_DEV" "$TARGET"
+TARGET_OWNED=1
 for pair in $SUBVOLUMES; do
   btrfs subvolume create "$TARGET/${pair%%=*}"
 done
 umount "$TARGET"
+TARGET_OWNED=0
 
 log "Mounting target tree"
 # Mount subvolumes in config order; '@=/' must come first.
@@ -131,6 +177,9 @@ for pair in $SUBVOLUMES; do
   subvol="${pair%%=*}" mountpoint="${pair#*=}"
   mkdir -p "$TARGET$mountpoint"
   mount -o "$BTRFS_OPTS,subvol=$subvol" "$ROOT_DEV" "$TARGET$mountpoint"
+  if [ "$mountpoint" = "/" ]; then
+    TARGET_OWNED=1
+  fi
 done
 mkdir -p "$TARGET/boot/efi"
 mount "$ESP_DEV" "$TARGET/boot/efi"
@@ -195,5 +244,6 @@ rm -f "$TARGET/root/configure.sh" "$TARGET/root/install.env" \
 
 log "Unmounting"
 umount -R "$TARGET"
+TARGET_OWNED=0
 
 log "Done. Reboot into the new system (remove the live medium)."

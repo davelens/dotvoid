@@ -17,13 +17,13 @@ mkdir -p "$STATE_DIR"
 
 # Direct kernel boot lets the host drive the live system over ttyS0. The
 # target still boots and installs under OVMF, so /sys/firmware/efi exists.
-LIVE_KERNEL="$STATE_DIR/vmlinuz"
-LIVE_INITRD="$STATE_DIR/initrd"
-if [ ! -f "$LIVE_KERNEL" ] || [ ! -f "$LIVE_INITRD" ]; then
-  log "Extracting kernel and initrd from the live ISO"
-  bsdtar -xOf "$ISO_PATH" boot/vmlinuz >"$LIVE_KERNEL"
-  bsdtar -xOf "$ISO_PATH" boot/initrd >"$LIVE_INITRD"
-fi
+LIVE_KERNEL="$STATE_DIR/${ISO_NAME}.vmlinuz"
+LIVE_INITRD="$STATE_DIR/${ISO_NAME}.initrd"
+log "Extracting kernel and initrd from the live ISO"
+bsdtar -xOf "$ISO_PATH" boot/vmlinuz >"$LIVE_KERNEL"
+[ -s "$LIVE_KERNEL" ] || die "extracted live kernel is empty"
+bsdtar -xOf "$ISO_PATH" boot/initrd >"$LIVE_INITRD"
+[ -s "$LIVE_INITRD" ] || die "extracted live initrd is empty"
 
 log "Recreating $DISK_SIZE VM disk"
 rm -f "$DISK_PATH" "$STATE_DIR/OVMF_VARS.fd"

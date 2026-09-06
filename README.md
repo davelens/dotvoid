@@ -1,12 +1,10 @@
 # dotvoid
 
-Deterministic Void Linux installation and configuration.
-
-Instead of clicking through `void-installer`, the entire install is a
-versioned, replayable pipeline: a config file describes the machine, a
-script performs the install from the official live ISO, and a QEMU
-harness lets you test the whole thing end-to-end before touching real
-hardware.
+A config-driven Void Linux base-system installer and a QEMU harness for
+testing it end-to-end. On real hardware, run `scripts/install.sh` from
+the official live ISO. On a host, `vm/install.sh` creates a VM disk and
+drives that same installer unattended; desktop provisioning remains in
+the separate dotsys repository.
 
 Choices baked in:
 
@@ -29,22 +27,37 @@ scripts/
   configure.sh     # runs inside the chroot (invoked by install.sh)
 vm/
   fetch-iso.sh     # download + sha256-verify the live ISO
+  install.sh       # create a fresh disk and run an unattended VM install
+  auto-install.py  # drive the serial-console install and validate completion
   run.sh           # boot live ISO + fresh disk in QEMU (UEFI, 9p share)
-  test.sh          # boot the installed disk to verify it works
+  test.sh          # boot the installed disk for manual verification
   common.sh        # shared settings (ISO version, disk size, OVMF paths)
+```
+
+## Host-only checks
+
+These checks use fake guests and mocked disk inspection; they do not boot
+QEMU or touch real disks:
+
+```sh
+python3 vm/test-auto-install.py
+bash vm/test-host.sh
 ```
 
 ## Testing in a VM
 
-Host requirements: `qemu-system-x86_64`, `edk2-ovmf`, KVM.
+Host requirements: `curl`, `sha256sum`, `qemu-system-x86_64`, `qemu-img`,
+working KVM access, OVMF firmware, `bsdtar`, and Python 3.
 
 ```sh
 ./vm/fetch-iso.sh    # download + verify the live ISO
 ./vm/install.sh      # fresh disk + fully unattended install
 ```
 
-The command logs into the live image, mounts the repository, runs the
-installer, and powers off automatically. Then verify the installed system:
+`vm/install.sh` logs into the live image over its serial console, mounts
+the repository, runs the installer, and validates its completion before
+the VM powers off. `vm/test.sh` then boots only the installed disk for
+manual verification (including login and UEFI boot):
 
 ```sh
 ./vm/test.sh         # also forwards ssh to localhost:2222
@@ -104,7 +117,9 @@ After a base install, clone dotsys and run `void/init.sh` as your user.
 ## Notes
 
 - `install.sh` wipes the target disk entirely. It refuses to run
-  without an interactive `yes` or `FORCE=1`.
+  without an interactive `yes` or `FORCE=1`. It also rejects partition
+  targets, mounted disks (including descendants/swap), and an occupied
+  `/mnt` mount tree; `FORCE=1` does not bypass those checks.
 - The live ISO version used by the VM harness is pinned in
   `vm/common.sh` (`VOID_VERSION`).
 - Void is a rolling release: "deterministic" here means the *procedure

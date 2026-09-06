@@ -16,6 +16,17 @@ FAILURE_MARKER = b"__DOTVOID_INSTALL_FAILED__"
 TIMEOUT_SECONDS = 45 * 60
 
 
+def stop_process(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print(f"usage: {sys.argv[0]} <qemu command...>", file=sys.stderr)
@@ -44,22 +55,30 @@ def main() -> int:
         "FORCE=1 /media/repo/scripts/install.sh /media/repo/config/vm.env; "
         "rc=$?; "
         "if [ $rc -eq 0 ]; then "
-        f"echo {SUCCESS_MARKER.decode()}; sync; poweroff; "
+        "printf '%s%s\\n' '__DOTVOID_INSTALL_' 'SUCCEEDED__'; sync; poweroff; "
         "else "
-        f"echo {FAILURE_MARKER.decode()}:$rc; "
+        "printf '%s%s:%s\\n' '__DOTVOID_INSTALL_' 'FAILED__' \"$rc\"; "
         "fi\n"
     ).encode()
+    status_buffer = b""
+    stdout_open = True
 
     try:
-        while process.poll() is None:
-            if time.monotonic() > deadline:
+        while stdout_open or process.poll() is None:
+            if process.poll() is None and time.monotonic() > deadline:
                 print("\nerror: automated install timed out", file=sys.stderr)
-                process.terminate()
                 return 1
 
-            for key, _ in selector.select(timeout=1):
+            events = selector.select(timeout=1)
+            if not events and process.poll() is not None:
+                break
+
+            for key, _ in events:
+                install_started = False
                 chunk = os.read(key.fd, 4096)
                 if not chunk:
+                    stdout_open = False
+                    selector.unregister(key.fileobj)
                     continue
                 os.write(sys.stdout.fileno(), chunk)
                 buffer = (buffer + chunk)[-8192:]
@@ -78,23 +97,40 @@ def main() -> int:
                     process.stdin.write(install_command)
                     process.stdin.flush()
                     buffer = b""
+                    status_buffer = b""
                     state = "installing"
-                elif state == "installing" and SUCCESS_MARKER in buffer:
-                    succeeded = True
-                    state = "poweroff"
-                elif state == "installing" and FAILURE_MARKER in buffer:
-                    print("\nerror: guest installer failed; VM left at shell", file=sys.stderr)
-                    process.terminate()
-                    return 1
+                    install_started = True
+
+                if state == "installing" and not install_started:
+                    status_buffer += chunk
+                    while b"\n" in status_buffer:
+                        line, status_buffer = status_buffer.split(b"\n", 1)
+                        line = line.rstrip(b"\r")
+                        if line == SUCCESS_MARKER:
+                            succeeded = True
+                            state = "poweroff"
+                            break
+                        failure_prefix = FAILURE_MARKER + b":"
+                        failure_status = line[len(failure_prefix):]
+                        if (
+                            line.startswith(failure_prefix)
+                            and failure_status
+                            and failure_status.isdigit()
+                        ):
+                            print("\nerror: guest installer failed", file=sys.stderr)
+                            return 1
     except KeyboardInterrupt:
-        process.terminate()
         return 130
     finally:
-        if process.poll() is None:
-            process.wait(timeout=10)
+        selector.close()
+        stop_process(process)
 
+    exit_code = process.wait()
     if not succeeded:
         print("\nerror: VM exited before installation completed", file=sys.stderr)
+        return 1
+    if exit_code != 0:
+        print(f"\nerror: VM exited with status {exit_code}", file=sys.stderr)
         return 1
 
     print("\n==> Automated installation completed successfully")

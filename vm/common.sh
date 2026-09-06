@@ -3,7 +3,7 @@
 # shellcheck disable=SC2034  # variables are consumed by sourcing scripts
 
 VOID_VERSION="20250202"
-VOID_MIRROR="https://repo-default.voidlinux.org/live/current"
+VOID_MIRROR="https://repo-default.voidlinux.org/live/$VOID_VERSION"
 ISO_NAME="void-live-x86_64-${VOID_VERSION}-base.iso"
 
 VM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,6 +18,36 @@ VM_CPUS="4"
 
 log() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+
+verify_iso() {
+  local manifest=$1 iso_path=$2 digest
+
+  if ! digest=$(awk -v name="$ISO_NAME" '
+    BEGIN { prefix = "SHA256 (" name ") = " }
+    index($0, prefix) == 1 {
+      count++
+      digest = substr($0, length(prefix) + 1)
+    }
+    END {
+      if (count == 1) {
+        print digest
+      } else if (count == 0) {
+        print "error: checksum manifest has no BSD record for " name > "/dev/stderr"
+        exit 1
+      } else {
+        print "error: checksum manifest has duplicate BSD records for " name > "/dev/stderr"
+        exit 1
+      }
+    }
+  ' "$manifest"); then
+    return 1
+  fi
+
+  if ! printf '%s  %s\n' "$digest" "$iso_path" | sha256sum -c -; then
+    printf 'error: checksum verification failed for %s\n' "$ISO_NAME" >&2
+    return 1
+  fi
+}
 
 # Locate OVMF UEFI firmware across distros.
 find_ovmf_code() {
