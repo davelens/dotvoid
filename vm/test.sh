@@ -21,15 +21,5 @@ setup_uefi
 
 log "Booting installed system from $DISK_PATH (ssh: port 2222)"
 
-exec qemu-system-x86_64 \
-  -enable-kvm \
-  -machine q35,accel=kvm \
-  -cpu host \
-  -smp "$VM_CPUS" \
-  -m "$VM_MEM" \
-  -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
-  -drive if=pflash,format=raw,file="$OVMF_VARS" \
-  -drive file="$DISK_PATH",if=virtio,format=qcow2 \
-  -nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:2222-:22 \
-  -display gtk \
-  -name void-boot-test
+vm_qemu_argv installed
+exec "${VM_QEMU[@]}"

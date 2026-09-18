@@ -25,17 +25,11 @@ command -v qemu-system-x86_64 >/dev/null || die "qemu-system-x86_64 not found"
 [ -f "$ISO_PATH" ] || die "ISO missing; run ./vm/fetch-iso.sh first"
 
 mkdir -p "$STATE_DIR"
-setup_uefi
 
-if [ "${1:-}" = "--fresh" ]; then
-  log "Removing old disk + UEFI vars"
-  rm -f "$DISK_PATH" "$OVMF_VARS"
+if [ "${1:-}" = "--fresh" ] || [ ! -f "$DISK_PATH" ]; then
+  vm_fresh_disk
+else
   setup_uefi
-fi
-
-if [ ! -f "$DISK_PATH" ]; then
-  log "Creating $DISK_SIZE disk at $DISK_PATH"
-  qemu-img create -f qcow2 "$DISK_PATH" "$DISK_SIZE"
 fi
 
 log "Booting live ISO (repo shared as 9p tag 'repo')"
@@ -52,18 +46,5 @@ Afterwards: ./vm/test.sh to boot the installed system.
 ──────────────────────────────────────────────────────────────
 EOF
 
-exec qemu-system-x86_64 \
-  -enable-kvm \
-  -machine q35,accel=kvm \
-  -cpu host \
-  -smp "$VM_CPUS" \
-  -m "$VM_MEM" \
-  -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
-  -drive if=pflash,format=raw,file="$OVMF_VARS" \
-  -drive file="$DISK_PATH",if=virtio,format=qcow2 \
-  -cdrom "$ISO_PATH" \
-  -boot order=d \
-  -virtfs "local,path=$REPO_ROOT,mount_tag=repo,security_model=none,readonly=on" \
-  -nic user,model=virtio-net-pci \
-  -display gtk \
-  -name void-install-test
+vm_qemu_argv live
+exec "${VM_QEMU[@]}"

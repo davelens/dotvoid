@@ -33,7 +33,7 @@ vm/
   auto-install.py  # drive the serial-console install and validate completion
   run.sh           # boot live ISO + fresh disk in QEMU (UEFI, 9p share)
   test.sh          # boot the installed disk for manual verification
-  common.sh        # shared settings (ISO version, disk size, OVMF paths)
+  common.sh        # harness: settings, qemu argv per mode, disk + kernel helpers
 ```
 
 ## Host-only checks
@@ -125,7 +125,9 @@ After a base install, clone dotsys and run `void/init.sh` as your user.
   targets, mounted disks (including descendants/swap), and an occupied
   `/mnt` mount tree; `FORCE=1` does not bypass those checks.
 - The live ISO version used by the VM harness is pinned in
-  `vm/common.sh` (`VOID_VERSION`).
+  `vm/common.sh` (`VOID_VERSION`). `STATE_DIR`, `OVMF_CODE` and
+  `OVMF_VARS_TEMPLATE` can be preset in the environment to relocate
+  harness state or point at non-standard firmware paths.
 - Void is a rolling release: "deterministic" here means the *procedure
   and configuration* are reproducible; package versions move with the
   repos.

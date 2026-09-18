@@ -1,24 +1,65 @@
 #!/bin/bash
-# Host-only tests for installer safety checks. All system inspection is mocked.
+# Host-only tests for the installer and the QEMU harness. All system
+# inspection and external commands are mocked; nothing boots.
 set -euo pipefail
 
 case ${BASH_SOURCE[0]} in
   */*) TEST_DIR=${BASH_SOURCE[0]%/*} ;;
   *)   TEST_DIR=. ;;
 esac
+TMP_DIR=$(mktemp -d "$TEST_DIR/.test-host.XXXXXX")
+trap 'rm -rf "$TMP_DIR"' EXIT
+
 # shellcheck source=scripts/install-profile.sh
 . "$TEST_DIR/../scripts/install-profile.sh"
 # shellcheck source=scripts/install-safety.sh
 . "$TEST_DIR/../scripts/install-safety.sh"
+# Point the harness at scratch state before sourcing it.
+export STATE_DIR="$TMP_DIR/state"
+mkdir -p "$STATE_DIR"
 # shellcheck source=vm/common.sh
 . "$TEST_DIR/common.sh"
 
-if grep -Fq 'hostfwd=tcp:127.0.0.1:2222-:22' "$TEST_DIR/test.sh"; then
-  printf 'ok - SSH forwarding is loopback-only\n'
-else
-  printf 'not ok - SSH forwarding is not loopback-only\n' >&2
+argv_has() {
+  local name=$1 mode=$2 needle=$3
+
+  vm_qemu_argv "$mode"
+  case " ${VM_QEMU[*]} " in
+    *"$needle"*) printf 'ok - %s\n' "$name" ;;
+    *)
+      printf 'not ok - %s (missing %s)\n' "$name" "$needle" >&2
+      return 1
+      ;;
+  esac
+}
+
+argv_lacks() {
+  local name=$1 mode=$2 needle=$3
+
+  vm_qemu_argv "$mode"
+  case " ${VM_QEMU[*]} " in
+    *"$needle"*)
+      printf 'not ok - %s (unexpected %s)\n' "$name" "$needle" >&2
+      return 1
+      ;;
+    *) printf 'ok - %s\n' "$name" ;;
+  esac
+}
+
+OVMF_CODE=/mock/OVMF_CODE.fd
+OVMF_VARS="$STATE_DIR/OVMF_VARS.fd"
+argv_has "SSH forwarding is loopback-only" installed \
+  'hostfwd=tcp:127.0.0.1:2222-:22'
+argv_lacks "installed disk boots without the ISO" installed '-cdrom'
+argv_has "live boot shares the repo over 9p" live 'mount_tag=repo'
+argv_has "auto-install boots the extracted kernel" auto-install \
+  "-kernel $LIVE_KERNEL"
+argv_has "auto-install runs headless on ttyS0" auto-install '-nographic'
+if (vm_qemu_argv bogus) 2>/dev/null; then
+  printf 'not ok - unknown VM mode was accepted\n' >&2
   exit 1
 fi
+printf 'ok - unknown VM mode is rejected\n'
 
 MOCK_TYPE=disk
 MOCK_TYPE_STATUS=0
@@ -136,9 +177,6 @@ verify_rejects() {
   fi
   printf 'ok - %s\n' "$name"
 }
-
-TMP_DIR=$(mktemp -d "$TEST_DIR/.test-host.XXXXXX")
-trap 'rm -rf "$TMP_DIR"' EXIT
 
 # Profile loading runs in a subshell so each fixture starts from a clean
 # environment. readlink is mocked because fixture disks do not exist.
@@ -275,29 +313,12 @@ verify_rejects "duplicate selected ISO checksum" "$TMP_DIR/duplicate.txt" "$DUMM
 printf 'SHA256 (%s) = %064d\n' "$ISO_NAME" 0 > "$TMP_DIR/corrupt.txt"
 verify_rejects "corrupt ISO checksum" "$TMP_DIR/corrupt.txt" "$DUMMY_ISO"
 
-# Run a copy of install.sh with host-only mocks. An empty initrd must abort
-# before disk recreation, and the retry must replace both extraction outputs.
-INSTALL_SANDBOX="$TMP_DIR/install-sandbox"
-INSTALL_ISO_NAME=void-live-x86_64-20990101-base.iso
-mkdir -p "$INSTALL_SANDBOX/state"
-cp "$TEST_DIR/install.sh" "$INSTALL_SANDBOX/install.sh"
-cat > "$INSTALL_SANDBOX/common.sh" <<'EOF'
-ISO_NAME=void-live-x86_64-20990101-base.iso
-VM_DIR=$HARNESS_DIR
-REPO_ROOT=$HARNESS_DIR
-STATE_DIR=$HARNESS_DIR/state
-ISO_PATH=$STATE_DIR/$ISO_NAME
-DISK_PATH=$STATE_DIR/void-vm.qcow2
-DISK_SIZE=1G
-VM_MEM=1G
-VM_CPUS=1
-log() { :; }
-die() { exit 1; }
+# Run the real vm/install.sh against the scratch STATE_DIR with its external
+# commands replaced by exported functions. An empty initrd must abort before
+# disk recreation, and the retry must replace both extraction outputs.
 bsdtar() {
-  if [ "$(cat "$HARNESS_DIR/extract-mode")" = empty ]; then
-    if [ "$3" = boot/vmlinuz ]; then
-      printf 'stale-kernel\n'
-    fi
+  if [ "$(cat "$STATE_DIR/extract-mode")" = empty ]; then
+    [ "$3" = boot/vmlinuz ] && printf 'stale-kernel\n'
     return 0
   elif [ "$3" = boot/vmlinuz ]; then
     printf 'fresh-kernel\n'
@@ -306,30 +327,31 @@ bsdtar() {
   fi
 }
 qemu-system-x86_64() { :; }
-qemu-img() { printf 'qemu-img\n' >> "$HARNESS_DIR/vm-commands"; }
-python3() { printf 'python3\n' >> "$HARNESS_DIR/vm-commands"; }
-setup_uefi() {
-  OVMF_CODE=$HARNESS_DIR/OVMF_CODE.fd
-  OVMF_VARS=$STATE_DIR/OVMF_VARS.fd
-  : > "$OVMF_VARS"
-}
-EOF
-printf 'mock ISO\n' > "$INSTALL_SANDBOX/state/$INSTALL_ISO_NAME"
-export HARNESS_DIR=$INSTALL_SANDBOX
-printf 'empty\n' > "$INSTALL_SANDBOX/extract-mode"
-if bash "$INSTALL_SANDBOX/install.sh" >/dev/null 2>&1; then
+qemu-img() { printf 'qemu-img\n' >> "$STATE_DIR/vm-commands"; }
+python3() { printf 'python3\n' >> "$STATE_DIR/vm-commands"; }
+export -f bsdtar qemu-system-x86_64 qemu-img python3
+export OVMF_CODE=/mock/OVMF_CODE.fd OVMF_VARS_TEMPLATE="$TMP_DIR/OVMF_VARS.fd"
+: > "$OVMF_VARS_TEMPLATE"
+
+printf 'mock ISO\n' > "$ISO_PATH"
+printf 'empty\n' > "$STATE_DIR/extract-mode"
+if bash "$TEST_DIR/install.sh" >/dev/null 2>&1; then
   printf 'not ok - empty extraction was accepted\n' >&2
   exit 1
 fi
-if [ -e "$INSTALL_SANDBOX/vm-commands" ]; then
+if [ -e "$STATE_DIR/vm-commands" ]; then
   printf 'not ok - empty extraction touched disk or VM\n' >&2
   exit 1
 fi
-printf 'success\n' > "$INSTALL_SANDBOX/extract-mode"
-bash "$INSTALL_SANDBOX/install.sh" >/dev/null 2>&1
-if [ "$(cat "$INSTALL_SANDBOX/state/$INSTALL_ISO_NAME.vmlinuz")" != fresh-kernel ] ||
-   [ "$(cat "$INSTALL_SANDBOX/state/$INSTALL_ISO_NAME.initrd")" != fresh-initrd ]; then
+printf 'success\n' > "$STATE_DIR/extract-mode"
+bash "$TEST_DIR/install.sh" >/dev/null 2>&1
+if [ "$(cat "$LIVE_KERNEL")" != fresh-kernel ] ||
+   [ "$(cat "$LIVE_INITRD")" != fresh-initrd ]; then
   printf 'not ok - retry reused an earlier extraction\n' >&2
+  exit 1
+fi
+if [ "$(cat "$STATE_DIR/vm-commands")" != $'qemu-img\npython3' ]; then
+  printf 'not ok - install did not recreate the disk then start the VM\n' >&2
   exit 1
 fi
 printf 'ok - empty extraction is rejected and regenerated on retry\n'
