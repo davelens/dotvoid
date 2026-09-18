@@ -50,8 +50,13 @@ bash vm/test-host.sh
 
 Host requirements: `curl`, `sha256sum`, `qemu-system-x86_64`, `qemu-img`,
 working KVM access, OVMF firmware, `bsdtar`, and Python 3. `run.sh` and
-`test.sh` also need QEMU's GTK display and virtio GPU (on Arch:
-`qemu-ui-gtk qemu-hw-display-virtio-vga`).
+`test.sh` also need QEMU's GTK display and virtio GPU. Arch splits these
+into separate packages:
+
+```sh
+sudo pacman -S qemu-system-x86 qemu-img edk2-ovmf \
+  qemu-ui-gtk qemu-hw-display-virtio-gpu qemu-hw-display-virtio-vga
+```
 
 ```sh
 ./vm/install.sh      # fresh disk + fully unattended install
