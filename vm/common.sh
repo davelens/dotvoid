@@ -148,8 +148,8 @@ vm_qemu_argv() {
         -boot order=d
         -virtfs "local,path=$REPO_ROOT,mount_tag=repo,security_model=none,readonly=on"
         -nic user,model=virtio-net-pci
-        -device virtio-vga
-        -display gtk
+        -device virtio-vga-gl
+        -display gtk,gl=on
         -name void-install-test
       )
       ;;
@@ -170,12 +170,14 @@ vm_qemu_argv() {
       )
       ;;
     installed)
-      # A DRM-capable GPU so a wlroots compositor (sway) can start.
+      # A DRM-capable GPU so a wlroots compositor (sway) can start; virgl
+      # offloads rendering to the host, plain virtio-vga is sluggish and
+      # leaves black damage artifacts.
       # shellcheck disable=SC2054
       VM_QEMU+=(
         -nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:2222-:22
-        -device virtio-vga
-        -display gtk
+        -device virtio-vga-gl
+        -display gtk,gl=on
         -name void-boot-test
       )
       ;;

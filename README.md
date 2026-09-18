@@ -55,7 +55,7 @@ into separate packages:
 
 ```sh
 sudo pacman -S qemu-system-x86 qemu-img edk2-ovmf \
-  qemu-ui-gtk qemu-hw-display-virtio-gpu qemu-hw-display-virtio-vga
+  qemu-ui-gtk qemu-hw-display-virtio-gpu-gl qemu-hw-display-virtio-vga-gl
 ```
 
 ```sh
