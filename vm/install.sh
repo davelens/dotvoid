@@ -11,7 +11,7 @@ set -euo pipefail
 for cmd in qemu-system-x86_64 qemu-img bsdtar python3; do
   command -v "$cmd" >/dev/null || die "missing command: $cmd"
 done
-[ -f "$ISO_PATH" ] || die "ISO missing; run ./vm/fetch-iso.sh first"
+vm_ensure_iso
 
 mkdir -p "$STATE_DIR"
 

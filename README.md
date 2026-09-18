@@ -52,9 +52,11 @@ Host requirements: `curl`, `sha256sum`, `qemu-system-x86_64`, `qemu-img`,
 working KVM access, OVMF firmware, `bsdtar`, and Python 3.
 
 ```sh
-./vm/fetch-iso.sh    # download + verify the live ISO
 ./vm/install.sh      # fresh disk + fully unattended install
 ```
+
+The live ISO is downloaded and verified on first use (`vm/fetch-iso.sh`
+also runs standalone to re-verify a cached ISO).
 
 `vm/install.sh` logs into the live image over its serial console, mounts
 the repository, runs the installer, and validates its completion before

@@ -22,7 +22,7 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 command -v qemu-system-x86_64 >/dev/null || die "qemu-system-x86_64 not found"
-[ -f "$ISO_PATH" ] || die "ISO missing; run ./vm/fetch-iso.sh first"
+vm_ensure_iso
 
 mkdir -p "$STATE_DIR"
 

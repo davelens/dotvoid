@@ -97,6 +97,11 @@ setup_uefi() {
   fi
 }
 
+# Download + verify the live ISO if it is not cached yet.
+vm_ensure_iso() {
+  [ -f "$ISO_PATH" ] || "$VM_DIR/fetch-iso.sh"
+}
+
 # Discard the disk and UEFI variable store, then create both fresh.
 vm_fresh_disk() {
   log "Recreating $DISK_SIZE VM disk"
