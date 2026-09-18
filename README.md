@@ -21,9 +21,11 @@ Choices baked in:
 ```
 config/
   default.env      # real hardware profile (edit DISK before use!)
-  vm.env           # QEMU test profile, fully non-interactive
+  vm.env           # QEMU test profile; layers over default.env
 scripts/
   install.sh       # run from the live ISO: partition, bootstrap, chroot
+  install-profile.sh # load + validate a machine profile, derive settings
+  install-safety.sh  # refuse partitions, mounted disks, occupied /mnt
   configure.sh     # runs inside the chroot (invoked by install.sh)
 vm/
   fetch-iso.sh     # download + sha256-verify the live ISO
@@ -72,7 +74,9 @@ For manual debugging, boot the live image in a graphical QEMU window:
 ## Installing on real hardware
 
 1. Copy `config/default.env`, set `DISK` (use `/dev/disk/by-id/...`),
-   hostname, user, timezone. Leave passwords empty to be prompted.
+   hostname, user, timezone. Leave passwords empty to be prompted. A
+   profile may also source `default.env` and override only what differs,
+   as `config/vm.env` does.
 2. Boot the official Void live ISO (x86_64, glibc, base).
 3. Get this repo onto the live system (git clone, USB stick, curl).
 4. Run:
