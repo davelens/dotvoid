@@ -148,6 +148,7 @@ vm_qemu_argv() {
         -boot order=d
         -virtfs "local,path=$REPO_ROOT,mount_tag=repo,security_model=none,readonly=on"
         -nic user,model=virtio-net-pci
+        -device virtio-vga
         -display gtk
         -name void-install-test
       )
@@ -169,9 +170,11 @@ vm_qemu_argv() {
       )
       ;;
     installed)
+      # A DRM-capable GPU so a wlroots compositor (sway) can start.
       # shellcheck disable=SC2054
       VM_QEMU+=(
         -nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:2222-:22
+        -device virtio-vga
         -display gtk
         -name void-boot-test
       )

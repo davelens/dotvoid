@@ -51,6 +51,7 @@ OVMF_VARS="$STATE_DIR/OVMF_VARS.fd"
 argv_has "SSH forwarding is loopback-only" installed \
   'hostfwd=tcp:127.0.0.1:2222-:22'
 argv_lacks "installed disk boots without the ISO" installed '-cdrom'
+argv_has "installed disk has a DRM-capable GPU for sway" installed 'virtio-vga'
 argv_has "live boot shares the repo over 9p" live 'mount_tag=repo'
 argv_has "auto-install boots the extracted kernel" auto-install \
   "-kernel $LIVE_KERNEL"
